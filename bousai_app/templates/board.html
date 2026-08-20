@@ -10,15 +10,47 @@
     gap: 28px;
   }
 
+  .audience-fieldset {
+    margin: 14px 0 0;
+    padding: 14px;
+    border: 1px solid #d9e0eb;
+    background: #f8fafc;
+  }
+
+  .audience-fieldset legend {
+    padding: 0 6px;
+    color: #26364a;
+    font-weight: 700;
+  }
+
   .audience-options {
     display: grid;
     gap: 8px;
-    margin-top: 8px;
   }
 
   .audience-options label {
-    margin-top: 0;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin: 0;
+    padding: 11px 12px;
+    border: 1px solid #b9c7db;
+    border-radius: 4px;
+    background: white;
     font-weight: normal;
+    cursor: pointer;
+  }
+
+  .audience-options label:hover,
+  .audience-options label:has(input:checked) {
+    border-color: #2859aa;
+    background: #eef3fa;
+  }
+
+  .audience-options input {
+    flex: 0 0 auto;
+    width: 18px;
+    height: 18px;
   }
 
   .board-sidebar {
@@ -82,6 +114,25 @@
     background: #2859aa;
     font: inherit;
     cursor: pointer;
+  }
+
+  .board-delete-form {
+    display: inline-block;
+    margin-top: 6px;
+  }
+
+  .board-delete-button {
+    border: 1px solid #c55;
+    padding: 4px 10px;
+    color: #9b1c1c;
+    background: white;
+    font: inherit;
+    cursor: pointer;
+  }
+
+  .board-delete-button:hover,
+  .board-delete-button:focus {
+    background: #fff0f0;
   }
 
   .board-compose label {
@@ -170,12 +221,13 @@
       <h3>情報発信</h3>
       {% if is_logged_in %}
       <form method="post">
-        <label>閲覧できる人</label>
-        <div class="audience-options">
-          <label><input type="radio" name="audience" value="all" checked> ログインしている人・していない人の両方</label>
-          <label><input type="radio" name="audience" value="logged_in"> ログインした人だけ</label>
-          <label><input type="radio" name="audience" value="anonymous"> ログインしていない人だけ</label>
-        </div>
+        <fieldset class="audience-fieldset">
+          <legend>発信対象</legend>
+          <div class="audience-options">
+            <label><input type="radio" name="target_type" value="general" checked> 一般向け発信（全員が閲覧）</label>
+            <label><input type="radio" name="target_type" value="staff"> 職員向け発信（ログインユーザーだけ）</label>
+          </div>
+        </fieldset>
         <label for="shelter">避難所名（任意）</label>
         <input id="shelter" name="shelter" placeholder="避難所に関する情報の場合">
         <label for="content">情報</label>
@@ -201,8 +253,13 @@
           {% for inst in instructions %}
           <li>
             {{ inst.content|highlight_mentions }}{% if inst.shelter %}（避難先: {{ inst.shelter }}）{% endif %}<br>
-            <small>公開範囲: {% if inst.get('audience', 'all') == 'logged_in' %}ログインした人だけ{% elif inst.get('audience') == 'anonymous' %}ログインしていない人だけ{% else %}全員{% endif %}</small><br>
+            <small>{% if inst.get('target') in ('職員', 'staff') %}職員向け{% else %}一般向け{% endif %}</small><br>
             <small>{{ inst.created_at }} / {{ inst.status }}</small>
+            {% if is_logged_in %}
+              <form class="board-delete-form" method="post" action="{{ url_for('delete_instruction', instruction_id=inst.id) }}" onsubmit="return confirm('この発信情報を削除しますか？');">
+                <button class="board-delete-button" type="submit">削除</button>
+              </form>
+            {% endif %}
           </li>
           {% endfor %}
         </ul>

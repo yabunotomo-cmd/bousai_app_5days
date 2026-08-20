@@ -92,6 +92,7 @@
 <nav class="register-links" aria-label="避難所管理メニュー">
   <a href="{{ url_for('all_shelters') }}">登録済み避難所一覧</a>
   <a href="{{ url_for('shelter_search') }}">避難所検索</a>
+  <a href="{{ url_for('evacuee_counts') }}">避難者数更新</a>
 </nav>
 
 {% if success %}

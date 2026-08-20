@@ -4,6 +4,7 @@ from functools import wraps
 import json
 import os
 import urllib.request
+import math
 from datetime import datetime, timedelta, timezone
 import re
 from markupsafe import Markup, escape
@@ -96,6 +97,16 @@ WARNING_CODES = {
 # サンプルデータの読み込み
 DATA_FILE = os.path.join(APP_DIR, 'data', 'shelters.json')
 INSTRUCTIONS_FILE = os.path.join(APP_DIR, 'data', 'instructions.json')
+DEMO_LOCATION = {
+    'name': '青森市役所',
+    'latitude': 40.8220,
+    'longitude': 140.7470
+}
+SHELTER_COORDINATES = {
+    1: (40.8227, 140.7428), 2: (40.8127, 140.7556),
+    3: (40.7975, 140.7752), 4: (40.8103, 140.7602),
+    5: (40.8202, 140.7354)
+}
 
 def load_json(path, default):
     """JSONファイルを読み込む（存在しない・壊れている場合は default を返す）"""
@@ -115,6 +126,13 @@ def save_instructions():
             json.dump(instructions, f, ensure_ascii=False, indent=2)
     except Exception:
         pass
+
+
+def save_shelters():
+    temporary_file = f'{DATA_FILE}.tmp'
+    with open(temporary_file, 'w', encoding='utf-8') as data_file:
+        json.dump(shelters, data_file, ensure_ascii=False, indent=2)
+    os.replace(temporary_file, DATA_FILE)
 
 
 def get_shelter_crowding(shelter):
@@ -144,6 +162,26 @@ def get_shelter_crowding(shelter):
         'rate': rate,
         'status': status
     }
+
+
+def get_shelter_coordinates(shelter):
+    latitude = shelter.get('latitude')
+    longitude = shelter.get('longitude')
+    if latitude is None or longitude is None:
+        latitude, longitude = SHELTER_COORDINATES.get(shelter.get('id'), (None, None))
+    try:
+        return float(latitude), float(longitude)
+    except (TypeError, ValueError):
+        return None
+
+
+def calculate_distance_km(latitude, longitude, target_latitude, target_longitude):
+    radius = 6371.0
+    lat1, lat2 = math.radians(latitude), math.radians(target_latitude)
+    delta_lat = math.radians(target_latitude - latitude)
+    delta_lon = math.radians(target_longitude - longitude)
+    value = math.sin(delta_lat / 2) ** 2 + math.cos(lat1) * math.cos(lat2) * math.sin(delta_lon / 2) ** 2
+    return radius * 2 * math.atan2(math.sqrt(value), math.sqrt(1 - value))
 # ────────────────────────────────
 
 # ────────────────────────────────
@@ -282,8 +320,32 @@ def get_weather_warnings():
 # トップページ：templates/index.html を返す（住民向け指示も表示する）
 @app.route('/')
 def index():
-    resident_notices = [i for i in instructions if i.get('target') == '住民']
-    return render_template('index.html', resident_notices=resident_notices)
+    is_logged_in = bool(session.get('logged_in'))
+    resident_notices = [
+        i for i in instructions
+        if i.get('target') in ('住民', 'general')
+        and i.get('audience', 'all') not in ('logged_in', 'anonymous')
+    ][:3]
+    staff_notices = [i for i in instructions if i.get('target') in ('職員', 'staff')]
+    map_shelters = []
+    for shelter in shelters:
+        coordinates = get_shelter_coordinates(shelter)
+        if coordinates:
+            map_shelters.append({
+                'id': shelter.get('id'),
+                'name': shelter.get('name', '未登録'),
+                'status': shelter.get('status') or shelter.get('opening_status', '開設中'),
+                'latitude': coordinates[0],
+                'longitude': coordinates[1]
+            })
+    return render_template(
+        'index.html',
+        resident_notices=resident_notices,
+        staff_notices=staff_notices,
+        is_logged_in=is_logged_in,
+        map_shelters=map_shelters,
+        demo_location=DEMO_LOCATION
+    )
 
 # ログインページ
 @app.route('/login', methods=['GET', 'POST'])
@@ -493,6 +555,12 @@ def shelter_register():
 @app.route('/shelter_search')
 def shelter_search():
     keyword = request.args.get('keyword', '').strip()
+    try:
+        reference_latitude = float(request.args.get('latitude', DEMO_LOCATION['latitude']))
+        reference_longitude = float(request.args.get('longitude', DEMO_LOCATION['longitude']))
+    except (TypeError, ValueError):
+        reference_latitude = DEMO_LOCATION['latitude']
+        reference_longitude = DEMO_LOCATION['longitude']
     facility_options = ['トイレ', 'Wi-Fi', '発電機', '空調', '充電設備', '給水設備', '医療・救護設備']
     barrier_free_options = ['車椅子対応', 'スロープ', '多目的トイレ', 'エレベーター', '妊婦・乳幼児対応', '授乳室', 'おむつ交換スペース']
     parking_options = ['駐車場あり', '駐車場なし', '大型車対応']
@@ -550,34 +618,35 @@ def shelter_search():
             return False
         return True
 
-    default_coordinates = {
-        1: (40.8227, 140.7428),
-        2: (40.8127, 140.7556),
-        3: (40.7975, 140.7752),
-        4: (40.8103, 140.7602),
-        5: (40.8202, 140.7354)
-    }
     results = [shelter for shelter in shelters if matches(shelter)]
     map_shelters = []
+    distances = {}
     for shelter in results:
-        latitude = shelter.get('latitude')
-        longitude = shelter.get('longitude')
-        if latitude is None or longitude is None:
-            latitude, longitude = default_coordinates.get(shelter.get('id'), (None, None))
-        if latitude is not None and longitude is not None:
+        coordinates = get_shelter_coordinates(shelter)
+        if coordinates:
+            latitude, longitude = coordinates
+            distances[shelter.get('id')] = calculate_distance_km(
+                latitude, longitude, reference_latitude, reference_longitude
+            )
             map_shelters.append({
                 'id': shelter.get('id'),
                 'name': shelter.get('name', '未登録'),
                 'latitude': latitude,
                 'longitude': longitude
             })
+        else:
+            distances[shelter.get('id')] = None
+    results.sort(key=lambda shelter: distances.get(shelter.get('id')) is None,)
+    results.sort(key=lambda shelter: distances.get(shelter.get('id')) or float('inf'))
 
     return render_template(
         'shelter_search.html',
         shelters=results,
         crowding={shelter.get('id'): get_shelter_crowding(shelter) for shelter in results},
+        distances=distances,
         map_shelters=map_shelters,
         keyword=keyword,
+        reference_location={'latitude': reference_latitude, 'longitude': reference_longitude},
         filters=filters,
         facility_options=facility_options,
         barrier_free_options=barrier_free_options,
@@ -607,6 +676,48 @@ def shelter_detail(shelter_id):
     )
 
 
+@app.route('/evacuee_counts', methods=['GET', 'POST'])
+@login_required
+def evacuee_counts():
+    selected_id = request.values.get('shelter_id', type=int)
+    message = None
+    error = None
+    if selected_id is None and shelters:
+        selected_id = shelters[0].get('id')
+    selected_shelter = next((item for item in shelters if item.get('id') == selected_id), None)
+
+    if request.method == 'POST':
+        if selected_shelter is None:
+            error = '避難所を選択してください。'
+        else:
+            try:
+                new_capacity = int(request.form.get('current_capacity', ''))
+                maximum = int(selected_shelter.get('capacity', 0))
+                if new_capacity < 0 or new_capacity > maximum:
+                    raise ValueError
+            except (TypeError, ValueError):
+                error = f'現在の避難者数は0人以上、最大{selected_shelter.get("capacity", 0)}人以下で入力してください。'
+            if error is None:
+                original_capacity = selected_shelter.get('current_capacity')
+                selected_shelter['current_capacity'] = new_capacity
+                try:
+                    save_shelters()
+                    message = '避難者数を更新しました。'
+                except Exception:
+                    selected_shelter['current_capacity'] = original_capacity
+                    error = '避難者数を更新できませんでした。'
+
+    return render_template(
+        'evacuee_counts.html',
+        shelters=shelters,
+        selected_shelter=selected_shelter,
+        selected_id=selected_id,
+        crowding=get_shelter_crowding(selected_shelter) if selected_shelter else None,
+        message=message,
+        error=error
+    )
+
+
 # 指示ボード：住民向けの指示を検索・発信・確認する
 @app.route('/board', methods=['GET', 'POST'])
 def board():
@@ -615,20 +726,18 @@ def board():
             return redirect(url_for('login', next=request.path))
         content = request.form.get('content', '').strip()
         if content:
-            audience = request.form.get('audience', 'all')
-            if audience not in ('all', 'logged_in', 'anonymous'):
-                audience = 'all'
+            target_type = request.form.get('target_type', 'general')
+            target = '職員' if target_type == 'staff' else '住民'
             next_id = max((instruction.get('id', 0) for instruction in instructions), default=0) + 1
             now = get_japan_time()
             instructions.insert(0, {
                 'id': next_id,
-                'target': '住民',
+                'target': target,
                 'content': content,
                 'shelter': request.form.get('shelter', '').strip(),
                 'status': '発信中',
                 'created_at': now,
                 'updated_at': now,
-                'audience': audience,
             })
             save_instructions()
             return redirect(url_for('board'))
@@ -637,10 +746,13 @@ def board():
     is_logged_in = bool(session.get('logged_in'))
 
     def is_visible(instruction):
-        if instruction.get('target') != '住民':
-            return False
-        audience = instruction.get('audience', 'all')
-        return audience == 'all' or (audience == 'logged_in' and is_logged_in) or (audience == 'anonymous' and not is_logged_in)
+        if instruction.get('target') in ('職員', 'staff'):
+            return is_logged_in
+        if instruction.get('audience') == 'logged_in':
+            return is_logged_in
+        if instruction.get('audience') == 'anonymous':
+            return not is_logged_in
+        return instruction.get('target') in ('住民', 'general')
 
     resident_instructions = [i for i in instructions if is_visible(i)]
     if search_word:
@@ -655,6 +767,18 @@ def board():
         search_word=search_word,
         is_logged_in=is_logged_in
     )
+
+
+@app.route('/board/delete/<int:instruction_id>', methods=['POST'])
+def delete_instruction(instruction_id):
+    if not session.get('logged_in'):
+        return redirect(url_for('login', next=url_for('board')))
+
+    instruction = next((item for item in instructions if item.get('id') == instruction_id), None)
+    if instruction is not None:
+        instructions.remove(instruction)
+        save_instructions()
+    return redirect(url_for('board'))
 
 # 検索結果ページ：templates/search_results.html を返す
 @app.route('/search_results')

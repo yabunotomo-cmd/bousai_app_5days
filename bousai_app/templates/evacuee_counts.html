@@ -1,0 +1,92 @@
+{% extends "base.html" %}
+
+{% block title %}避難者数更新 - 防災アプリ{% endblock %}
+
+{% block content %}
+<style>
+  .count-panel { padding: 24px; background: white; box-shadow: 0 8px 24px rgba(31, 70, 125, 0.08); }
+  .count-panel select, .count-panel input { width: 100%; max-width: 420px; padding: 10px; font: inherit; }
+  .count-summary { display: grid; gap: 8px; margin: 20px 0; }
+  .count-summary strong { color: #2859aa; }
+  .count-adjustments { display: flex; flex-wrap: wrap; gap: 8px; margin: 10px 0; }
+  .count-adjustments button, .count-submit { padding: 10px 16px; border: 0; color: white; background: #2859aa; font: inherit; cursor: pointer; }
+  .count-submit { margin-top: 16px; }
+  .count-message { color: #176b38; }
+  .count-error { color: #8a1c1c; }
+</style>
+
+<h2>避難者数更新</h2>
+{% if message %}<p class="count-message" role="status">{{ message }}</p>{% endif %}
+{% if error %}<p class="count-error" role="alert">{{ error }}</p>{% endif %}
+
+{% if shelters %}
+  <section class="count-panel">
+    <form method="get">
+      <label for="shelter_id">避難所を選択</label><br>
+      <select id="shelter_id" name="shelter_id" onchange="this.form.submit()">
+        {% for shelter in shelters %}
+          <option value="{{ shelter.id }}"{% if shelter.id == selected_id %} selected{% endif %}>{{ shelter.name }}</option>
+        {% endfor %}
+      </select>
+    </form>
+
+    {% if selected_shelter %}
+      <h3>収容人数</h3>
+      <div class="count-summary">
+        <div>最大収容人数: <strong>{{ selected_shelter.get('capacity', '要確認') }}{% if selected_shelter.get('capacity') is number %}人{% endif %}</strong></div>
+        {% if crowding.available is not none %}
+          <div>空き人数: <strong id="available-count">{{ crowding.available }}人</strong></div>
+          <div>混雑率: <strong id="occupancy-rate">{{ crowding.rate }}%</strong></div>
+          <div>現在の状況: <strong id="occupancy-status">{{ crowding.status }}</strong></div>
+        {% else %}
+          <div>収容人数が未登録のため、更新できません。</div>
+        {% endif %}
+      </div>
+      {% if crowding.available is not none %}
+      <form method="post">
+        <input type="hidden" name="shelter_id" value="{{ selected_shelter.id }}">
+        <label for="current_capacity">現在の避難者数</label><br>
+        <input id="current_capacity" name="current_capacity" type="number" min="0" max="{{ selected_shelter.capacity }}" value="{{ selected_shelter.current_capacity|default(0) }}" required>
+        <div class="count-adjustments">
+          <button type="button" data-delta="-1">-1</button>
+          <button type="button" data-delta="1">+1</button>
+          <button type="button" data-delta="-5">-5</button>
+          <button type="button" data-delta="5">+5</button>
+        </div>
+        <button class="count-submit" type="submit">更新する</button>
+      </form>
+      {% endif %}
+    {% endif %}
+  </section>
+{% else %}
+  <p>登録済みの避難所がありません。</p>
+{% endif %}
+
+<p><a href="{{ url_for('shelter_register') }}">登録フォームに戻る</a></p>
+
+{% if selected_shelter %}
+<script>
+  const countInput = document.querySelector('#current_capacity');
+  const maximum = Number({{ selected_shelter.get('capacity', 0)|int }});
+  const availableOutput = document.querySelector('#available-count');
+  const rateOutput = document.querySelector('#occupancy-rate');
+  const statusOutput = document.querySelector('#occupancy-status');
+  function updateCountPreview() {
+    const current = Math.min(Math.max(Number(countInput.value) || 0, 0), maximum);
+    countInput.value = current;
+    availableOutput.textContent = Math.max(maximum - current, 0) + '人';
+    rateOutput.textContent = (maximum > 0 ? Math.round(current / maximum * 100) : 0) + '%';
+    statusOutput.textContent = maximum > 0 && current >= maximum ? '🔴 満員' : maximum > 0 && current >= maximum * 0.7 ? '🟡 やや混雑' : '🟢 余裕あり';
+  }
+  if (countInput) {
+    countInput.addEventListener('input', updateCountPreview);
+    document.querySelectorAll('[data-delta]').forEach(function(button) {
+      button.addEventListener('click', function() {
+        countInput.value = Number(countInput.value || 0) + Number(button.dataset.delta);
+        updateCountPreview();
+      });
+    });
+  }
+</script>
+{% endif %}
+{% endblock %}

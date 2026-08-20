@@ -34,6 +34,7 @@
   }
 
   .search-button,
+  .clear-button,
   .location-button {
     margin-top: 10px;
     border: 0;
@@ -46,6 +47,14 @@
 
   .location-button {
     background: #526176;
+  }
+
+  .clear-button {
+    display: inline-block;
+    margin-top: 10px;
+    color: #204b95;
+    background: #eef3fa;
+    text-decoration: none;
   }
 
   .filter-heading {
@@ -171,6 +180,27 @@
     font-size: 0.88rem;
   }
 
+  .map-legend {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+    margin: 10px 0;
+    color: #526176;
+    font-size: 0.9rem;
+  }
+
+  .map-legend span::before {
+    content: '';
+    display: inline-block;
+    width: 12px;
+    height: 12px;
+    margin-right: 5px;
+    border-radius: 50%;
+  }
+
+  .legend-shelter::before { background: #d93636; }
+  .legend-location::before { background: #2859aa; }
+
   .location-status {
     min-height: 1.4em;
     color: #176b38;
@@ -228,6 +258,7 @@
         </fieldset>
       </div>
       <button class="search-button" type="submit">検索</button>
+      <a class="clear-button" href="{{ url_for('shelter_search') }}">絞り込みをクリア</a>
     </form>
     <button class="location-button" id="location-search" type="button">📍 現在地から検索</button>
     <p class="location-status" id="location-status" aria-live="polite"></p>
@@ -247,7 +278,7 @@
             <p>開設状況：{{ shelter.get('status') or shelter.get('opening_status', '開設中') }}</p>
             <p>混雑状況：{{ shelter_crowding.status }}{% if shelter_crowding.rate is not none %}（{{ shelter_crowding.rate }}%）{% endif %}</p>
             {% if shelter_crowding.available is not none %}<p>空き人数：{{ shelter_crowding.available }}人 / 現在：{{ shelter.get('current_capacity') }}人</p>{% endif %}
-            <p>距離：未計測</p>
+            {% if distances.get(shelter.id) is not none %}<p>距離：約{{ '%.1f'|format(distances.get(shelter.id)) }} km</p>{% else %}<p>距離：計算できません</p>{% endif %}
             <span>詳細を見る →</span>
           </a>
         </li>
@@ -274,12 +305,14 @@
     <div id="shelter-map" role="region" aria-label="避難所地図">
       <p>地図を読み込んでいます...</p>
     </div>
+    <div class="map-legend"><span class="legend-shelter">避難所</span><span class="legend-location">現在地（デモ）</span></div>
     <p class="map-note">避難所は現在地からの直線距離です。</p>
   </section>
 </div>
 
 <script>
   const mapShelters = {{ map_shelters|tojson }};
+  const referenceLocation = {{ reference_location|tojson }};
   const mapElement = document.querySelector('#shelter-map');
   const locationButton = document.querySelector('#location-search');
   const locationStatus = document.querySelector('#location-status');
@@ -290,15 +323,19 @@
       return false;
     }
     mapInitialized = true;
-    const map = L.map(mapElement).setView([40.8220, 140.7470], 13);
+    const map = L.map(mapElement).setView([referenceLocation.latitude, referenceLocation.longitude], 13);
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
       attribution: '© OpenStreetMap contributors'
     }).addTo(map);
     const bounds = [];
+    bounds.push([referenceLocation.latitude, referenceLocation.longitude]);
+    const shelterIcon = L.divIcon({className: 'shelter-marker', html: '<span style="display:block;width:18px;height:18px;border-radius:50%;background:#d93636;border:2px solid white;"></span>', iconSize: [18, 18]});
+    const locationIcon = L.divIcon({className: 'location-marker', html: '<span style="display:block;width:18px;height:18px;border-radius:50%;background:#2859aa;border:2px solid white;"></span>', iconSize: [18, 18]});
+    L.marker([referenceLocation.latitude, referenceLocation.longitude], {icon: locationIcon}).addTo(map).bindPopup('現在地（デモ）<br>青森市役所');
     mapShelters.forEach(function(shelter) {
       const point = [shelter.latitude, shelter.longitude];
       bounds.push(point);
-      L.marker(point).addTo(map).bindPopup(
+      L.marker(point, {icon: shelterIcon}).addTo(map).bindPopup(
         '避難所' + shelter.id + '：' + shelter.name + '<br>' +
         '<a href="/shelter/' + encodeURIComponent(shelter.id) + '">詳細を見る</a>'
       );
@@ -322,13 +359,22 @@
   initializeShelterMap();
 
   locationButton.addEventListener('click', function() {
+    function reloadFromLocation(latitude, longitude) {
+      const url = new URL(window.location.href);
+      url.searchParams.set('latitude', latitude);
+      url.searchParams.set('longitude', longitude);
+      window.location.href = url.toString();
+    }
     if (!navigator.geolocation) {
-      locationStatus.textContent = '現在地を取得できませんでした。';
+      reloadFromLocation(referenceLocation.latitude, referenceLocation.longitude);
       return;
     }
     navigator.geolocation.getCurrentPosition(
-      function() { locationStatus.textContent = '現在地を取得しました。'; },
-      function() { locationStatus.textContent = '現在地を取得できませんでした。'; }
+      function(position) { reloadFromLocation(position.coords.latitude, position.coords.longitude); },
+      function() {
+        locationStatus.textContent = '現在地を取得できないため、デモ地点で検索します。';
+        reloadFromLocation(referenceLocation.latitude, referenceLocation.longitude);
+      }
     );
   });
 

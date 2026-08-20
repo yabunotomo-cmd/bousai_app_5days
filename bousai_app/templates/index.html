@@ -14,6 +14,31 @@
   {% endif %}
 </section>
 
+{% if is_logged_in %}
+<section class="home-card staff-card">
+  <h2>職員指示</h2>
+  {% if staff_notices %}
+    <ul class="notice-list">
+      {% for notice in staff_notices %}
+      <li>{{ notice.content|highlight_mentions }}{% if notice.shelter %}<br>避難先: {{ notice.shelter }}{% endif %}</li>
+      {% endfor %}
+    </ul>
+  {% else %}
+    <p>職員向けの指示はありません。</p>
+  {% endif %}
+</section>
+{% endif %}
+
+<section class="home-card shelter-search-card">
+  <h2>避難所を探す</h2>
+  <form class="home-search-form" method="get" action="{{ url_for('shelter_search') }}">
+    <input type="text" name="keyword" placeholder="避難所名・住所を入力" aria-label="避難所名・住所">
+    <button type="submit">検索する</button>
+  </form>
+  <button class="home-location-button" id="home-location-search" type="button">現在地から一番近い避難所を検索</button>
+  <p id="home-location-status" aria-live="polite"></p>
+</section>
+
 <section class="home-card shelter-map-card">
   <h2><span class="section-icon" aria-hidden="true">●</span>避難所マップ</h2>
   <div id="shelterMap"></div>
@@ -54,6 +79,38 @@
     padding: 9px 12px;
     border-left: 4px solid #2859aa;
     background: #f7f8fa;
+  }
+
+  .staff-card {
+    padding: 18px 22px;
+  }
+
+  .home-search-form {
+    display: flex;
+    gap: 8px;
+  }
+
+  .home-search-form input {
+    min-width: 0;
+    flex: 1;
+    padding: 10px;
+    border: 1px solid #b9c7db;
+    font: inherit;
+  }
+
+  .home-search-form button,
+  .home-location-button {
+    border: 0;
+    padding: 10px 14px;
+    color: white;
+    background: #2859aa;
+    font: inherit;
+    cursor: pointer;
+  }
+
+  .home-location-button {
+    margin-top: 10px;
+    background: #526176;
   }
 
   #shelterMap {
@@ -125,10 +182,43 @@
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
 document.addEventListener('DOMContentLoaded', function() {
-  const map = L.map('shelterMap').setView([40.8246, 140.7400], 12);
+  const mapShelters = {{ map_shelters|tojson }};
+  const demoLocation = {{ demo_location|tojson }};
+  const map = L.map('shelterMap').setView([demoLocation.latitude, demoLocation.longitude], 12);
   L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
     attribution: '© OpenStreetMap contributors'
   }).addTo(map);
+  const bounds = [[demoLocation.latitude, demoLocation.longitude]];
+  const shelterIcon = L.divIcon({className: 'shelter-marker', html: '<span style="display:block;width:18px;height:18px;border-radius:50%;background:#d93636;border:2px solid white;"></span>', iconSize: [18, 18]});
+  const locationIcon = L.divIcon({className: 'location-marker', html: '<span style="display:block;width:18px;height:18px;border-radius:50%;background:#2859aa;border:2px solid white;"></span>', iconSize: [18, 18]});
+  mapShelters.forEach(function(shelter) {
+    const point = [shelter.latitude, shelter.longitude];
+    bounds.push(point);
+    L.marker(point, {icon: shelterIcon}).addTo(map).bindPopup(
+      shelter.name + '（' + shelter.status + '）<br><a href="/shelter/' + shelter.id + '">詳細を見る</a>'
+    );
+  });
+  L.marker([demoLocation.latitude, demoLocation.longitude], {icon: locationIcon}).addTo(map).bindPopup('現在地（デモ）<br>' + demoLocation.name);
+  map.fitBounds(bounds, {padding: [20, 20]});
+
+  const homeLocationButton = document.getElementById('home-location-search');
+  const homeLocationStatus = document.getElementById('home-location-status');
+  homeLocationButton.addEventListener('click', function() {
+    function goToSearch(latitude, longitude) {
+      window.location.href = '{{ url_for('shelter_search') }}?latitude=' + encodeURIComponent(latitude) + '&longitude=' + encodeURIComponent(longitude);
+    }
+    if (!navigator.geolocation) {
+      goToSearch(demoLocation.latitude, demoLocation.longitude);
+      return;
+    }
+    navigator.geolocation.getCurrentPosition(
+      function(position) { goToSearch(position.coords.latitude, position.coords.longitude); },
+      function() {
+        homeLocationStatus.textContent = '現在地を取得できないため、デモ地点で検索します。';
+        goToSearch(demoLocation.latitude, demoLocation.longitude);
+      }
+    );
+  });
 
   function updateWeatherWarnings() {
     fetch('/api/weather_warnings')
