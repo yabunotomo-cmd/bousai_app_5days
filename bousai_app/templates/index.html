@@ -1,74 +1,165 @@
 {% extends "base.html" %}
 
 {% block content %}
-<!-- 避難所マップ -->
-<h2>避難所マップ</h2>
-<div id="shelterMap" style="height: 300px;"></div>
+<section class="home-card notice-card">
+  <h2><span class="section-icon" aria-hidden="true">!</span>速報</h2>
+  {% if resident_notices %}
+    <ul class="notice-list">
+      {% for notice in resident_notices %}
+      <li>{{ notice.content|highlight_mentions }}{% if notice.shelter %}<br>避難先: {{ notice.shelter }}{% endif %}</li>
+      {% endfor %}
+    </ul>
+  {% else %}
+    <p>現在、住民向けの発信はありません。</p>
+  {% endif %}
+</section>
 
-<!-- 気象警報・注意報 -->
-<h2>青森市 気象警報・注意報</h2>
-<p>10分おきに自動更新されます。</p>
-<div id="weatherContent">
-  <p>読み込み中...</p>
-</div>
+<section class="home-card shelter-map-card">
+  <h2><span class="section-icon" aria-hidden="true">●</span>避難所マップ</h2>
+  <div id="shelterMap"></div>
+  <p class="shelter-search-link"><a href="{{ url_for('shelter_search') }}">避難所を検索する →</a></p>
+</section>
 
-<!-- Leaflet の読み込み -->
-<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+<section class="home-card weather-card">
+  <div class="weather-heading">
+    <h2><span class="section-icon" aria-hidden="true">☁</span>青森市 気象警報・注意報</h2>
+    <span class="refresh-label" aria-live="polite">↻ 10分おき自動更新</span>
+  </div>
+  <div id="weatherContent" class="weather-content"><p>読み込み中...</p></div>
+</section>
+
+<section class="home-card home-links">
+  <p><a href="#disaster-report">災害を報告する</a></p>
+  <p><a href="#contact">お問い合わせ</a></p>
+</section>
+
+<style>
+  .notice-card {
+    padding: 18px 22px;
+  }
+
+  .notice-card h2 {
+    margin-bottom: 12px;
+    font-size: 1.2rem;
+  }
+
+  .notice-list {
+    display: grid;
+    gap: 10px;
+    margin: 0;
+    padding-left: 20px;
+  }
+
+  .notice-list li {
+    padding: 9px 12px;
+    border-left: 4px solid #2859aa;
+    background: #f7f8fa;
+  }
+
+  #shelterMap {
+    height: 365px;
+    overflow: hidden;
+    border-radius: 12px;
+  }
+
+  .shelter-search-link {
+    margin: 16px 0 0;
+    text-align: right;
+  }
+
+  .weather-heading {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+  }
+
+  .weather-heading h2 {
+    margin-bottom: 0;
+  }
+
+  .refresh-label {
+    color: #1f9b51;
+    font-weight: 700;
+    white-space: nowrap;
+  }
+
+  .weather-content {
+    margin-top: 20px;
+    padding: 20px;
+    background: #f7f8fa;
+    border-radius: 12px;
+  }
+
+  .weather-content p {
+    margin: 8px 0;
+  }
+
+  .weather-content ul {
+    margin: 12px 0;
+    padding-left: 24px;
+  }
+
+  .weather-content strong {
+    color: #1f9b51;
+  }
+
+  .home-links p {
+    margin: 10px 0;
+  }
+
+  @media (max-width: 600px) {
+    #shelterMap {
+      height: 280px;
+    }
+
+    .weather-heading {
+      align-items: flex-start;
+      flex-direction: column;
+      gap: 4px;
+    }
+  }
+</style>
+
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-
 <script>
 document.addEventListener('DOMContentLoaded', function() {
-    // 地図の初期化（藤沢市周辺を中心に設定）
-    const map = L.map('shelterMap').setView([35.3390, 139.4903], 12);
+  const map = L.map('shelterMap').setView([40.8246, 140.7400], 12);
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    attribution: '© OpenStreetMap contributors'
+  }).addTo(map);
 
-    // OpenStreetMapタイルを追加
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-        attribution: '© OpenStreetMap contributors'
-    }).addTo(map);
+  function updateWeatherWarnings() {
+    fetch('/api/weather_warnings')
+      .then(response => response.json())
+      .then(updateWeatherContent)
+      .catch(() => {
+        document.getElementById('weatherContent').innerHTML = '<p>気象情報の取得に失敗しました</p>';
+      });
+  }
 
-    // 気象警報・注意報の自動更新機能
-    function updateWeatherWarnings() {
-        fetch('/api/weather_warnings')
-            .then(response => response.json())
-            .then(data => {
-                console.log('気象情報を更新しました:', data);
-                updateWeatherContent(data);
-            })
-            .catch(error => {
-                console.error('気象情報の更新に失敗しました:', error);
-            });
+  function updateWeatherContent(data) {
+    const weatherContent = document.getElementById('weatherContent');
+    if (data.error) {
+      weatherContent.innerHTML = '<p>気象情報の取得に失敗しました</p>';
+      return;
     }
-
-    function updateWeatherContent(data) {
-        const weatherContent = document.getElementById('weatherContent');
-
-        if (data.error) {
-            weatherContent.innerHTML = '<p>気象情報の取得に失敗しました</p>';
-            return;
-        }
-
-        let warningsHtml = '';
-        if (data.warnings && data.warnings.length > 0) {
-            warningsHtml = '<ul>';
-            data.warnings.forEach(warning => {
-                warningsHtml += `<li>${warning.name}（${warning.status}）</li>`;
-            });
-            warningsHtml += '</ul>';
-        } else {
-            warningsHtml = '<p>現在、警報・注意報は発表されていません</p>';
-        }
-
-        weatherContent.innerHTML = `
-            <p>対象地域: ${data.area_name || '青森市'}</p>
-            ${warningsHtml}
-            <p>最終確認: <span id="lastFetchTime">${data.last_fetch_time || '更新中...'}</span></p>
-            <p>気象庁最終発表: ${data.report_time || '不明'}</p>
-        `;
+    let warningsHtml = '';
+    if (data.warnings && data.warnings.length > 0) {
+      warningsHtml = '<ul>' + data.warnings.map(warning => `<li>${warning.name}（${warning.status}）</li>`).join('') + '</ul>';
+    } else {
+      warningsHtml = '<p><strong>● 現在、警報・注意報は発表されていません</strong></p>';
     }
+    weatherContent.innerHTML = `
+      <p>対象地域: ${data.area_name || '青森市'}</p>
+      ${warningsHtml}
+      <p>最終確認: ${data.last_fetch_time || '更新中...'}</p>
+      <p>気象庁最終発表: ${data.report_time || '不明'}</p>`;
+  }
 
-    // 初回表示＋10分（600,000ミリ秒）おきに自動更新
-    updateWeatherWarnings();
-    setInterval(updateWeatherWarnings, 600000);
+  updateWeatherWarnings();
+  setInterval(updateWeatherWarnings, 600000);
 });
 </script>
 {% endblock %}

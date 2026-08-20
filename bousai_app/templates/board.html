@@ -3,23 +3,232 @@
 {% block title %}指示・発信ボード - 防災アプリ{% endblock %}
 
 {% block content %}
-<h2>発信ボード</h2>
-<p>住民向けの発信を登録・確認できます。</p>
+<style>
+  .board-layout {
+    display: grid;
+    grid-template-columns: 180px minmax(0, 1fr);
+    gap: 28px;
+  }
 
-<!-- 発信一覧 -->
-<h3>発信一覧</h3>
-{% if instructions %}
-<table border="1" cellpadding="5">
-  <tr>
-    <th>内容</th>
-  </tr>
-  {% for inst in instructions %}
-  <tr>
-    <td>{{ inst.content }}{% if inst.shelter %}（避難先: {{ inst.shelter }}）{% endif %}</td>
-  </tr>
-  {% endfor %}
-</table>
-{% else %}
-<p>登録されている指示はありません。</p>
-{% endif %}
+  .audience-options {
+    display: grid;
+    gap: 8px;
+    margin-top: 8px;
+  }
+
+  .audience-options label {
+    margin-top: 0;
+    font-weight: normal;
+  }
+
+  .board-sidebar {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .board-sidebar a {
+    display: block;
+    padding: 14px 16px;
+    border-left: 4px solid #2859aa;
+    color: #204b95;
+    background: white;
+    text-decoration: none;
+    box-shadow: 0 4px 12px rgba(31, 70, 125, 0.08);
+  }
+
+  .board-sidebar a:hover,
+  .board-sidebar a:focus {
+    background: #eef3fa;
+  }
+
+  .board-main {
+    min-width: 0;
+  }
+
+  .board-panel {
+    margin-bottom: 24px;
+    padding: 22px;
+    background: white;
+    box-shadow: 0 8px 24px rgba(31, 70, 125, 0.08);
+  }
+
+  .board-panel h2,
+  .board-panel h3 {
+    margin-top: 0;
+    color: #2859aa;
+  }
+
+  .board-search {
+    display: flex;
+    gap: 10px;
+  }
+
+  .board-search input,
+  .board-compose input,
+  .board-compose textarea {
+    width: 100%;
+    padding: 10px 12px;
+    border: 1px solid #b9c7db;
+    border-radius: 4px;
+    font: inherit;
+  }
+
+  .board-search button,
+  .board-send-button {
+    border: 0;
+    padding: 10px 18px;
+    color: white;
+    background: #2859aa;
+    font: inherit;
+    cursor: pointer;
+  }
+
+  .board-compose label {
+    display: block;
+    margin-top: 14px;
+    font-weight: bold;
+  }
+
+  .board-compose textarea {
+    min-height: 150px;
+    resize: vertical;
+  }
+
+  .instruction-preview {
+    margin-top: 10px;
+    padding: 12px;
+    border: 1px solid #d9e0eb;
+    background: #f8fafc;
+  }
+
+  .instruction-preview-label {
+    display: block;
+    margin-bottom: 6px;
+    color: #526176;
+    font-size: 0.9rem;
+  }
+
+  .instruction-highlight {
+    padding: 1px 5px;
+    border-radius: 4px;
+    color: #8a3d00;
+    background: #fff0c2;
+    font-weight: 700;
+  }
+
+  .board-send {
+    display: flex;
+    justify-content: flex-end;
+    margin-top: 18px;
+  }
+
+  .instruction-list {
+    padding-left: 20px;
+  }
+
+  .instruction-list li {
+    margin-bottom: 14px;
+  }
+
+  @media (max-width: 700px) {
+    .board-layout {
+      grid-template-columns: 1fr;
+      gap: 18px;
+    }
+
+    .board-sidebar {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .board-search {
+      flex-direction: column;
+    }
+  }
+</style>
+
+<div class="board-layout">
+  <nav class="board-sidebar" aria-label="指示発信ボードメニュー">
+    <a href="#instruction-search">検索</a>
+    <a href="#information-send">情報発信</a>
+    <a href="#sent-information">発信情報の閲覧</a>
+  </nav>
+
+  <div class="board-main">
+    <section class="board-panel" id="instruction-search">
+      <h2>指示発信ボード</h2>
+      <h3>検索</h3>
+      <form class="board-search" method="get">
+        <label for="search-word">検索ワード</label>
+        <input id="search-word" name="q" value="{{ search_word }}" placeholder="発信内容や避難所名">
+        <button type="submit">検索</button>
+      </form>
+    </section>
+
+    <section class="board-panel board-compose" id="information-send">
+      <h3>情報発信</h3>
+      {% if is_logged_in %}
+      <form method="post">
+        <label>閲覧できる人</label>
+        <div class="audience-options">
+          <label><input type="radio" name="audience" value="all" checked> ログインしている人・していない人の両方</label>
+          <label><input type="radio" name="audience" value="logged_in"> ログインした人だけ</label>
+          <label><input type="radio" name="audience" value="anonymous"> ログインしていない人だけ</label>
+        </div>
+        <label for="shelter">避難所名（任意）</label>
+        <input id="shelter" name="shelter" placeholder="避難所に関する情報の場合">
+        <label for="content">情報</label>
+        <textarea id="content" name="content" required placeholder="住民に伝える情報を入力してください&#10;例：@(高齢者)の方は早めに避難してください"></textarea>
+        <div class="instruction-preview" aria-live="polite">
+          <span class="instruction-preview-label">発信時の表示プレビュー</span>
+          <span id="instruction-preview-text">ここに入力内容が表示されます</span>
+        </div>
+        <div class="board-send">
+          <button class="board-send-button" type="submit">送信</button>
+        </div>
+      </form>
+      {% else %}
+        <p>情報を発信するにはログインしてください。</p>
+        <p><a href="{{ url_for('login', next='/board') }}">ログイン画面へ</a></p>
+      {% endif %}
+    </section>
+
+    <section class="board-panel" id="sent-information">
+      <h3>発信情報の閲覧</h3>
+      {% if instructions %}
+        <ul class="instruction-list">
+          {% for inst in instructions %}
+          <li>
+            {{ inst.content|highlight_mentions }}{% if inst.shelter %}（避難先: {{ inst.shelter }}）{% endif %}<br>
+            <small>公開範囲: {% if inst.get('audience', 'all') == 'logged_in' %}ログインした人だけ{% elif inst.get('audience') == 'anonymous' %}ログインしていない人だけ{% else %}全員{% endif %}</small><br>
+            <small>{{ inst.created_at }} / {{ inst.status }}</small>
+          </li>
+          {% endfor %}
+        </ul>
+      {% else %}
+        <p>該当する発信情報はありません。</p>
+      {% endif %}
+    </section>
+  </div>
+</div>
+<script>
+  const instructionInput = document.querySelector('#content');
+  const instructionPreview = document.querySelector('#instruction-preview-text');
+  const mentionPattern = /@\(([^()]*)\)/g;
+
+  if (instructionInput && instructionPreview) {
+    function updateInstructionPreview() {
+      const escapedText = instructionInput.value.replace(/[&<>"']/g, function(character) {
+        return {'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'}[character];
+      });
+      instructionPreview.innerHTML = escapedText.replace(
+        mentionPattern,
+        '<strong class="instruction-highlight">$1</strong>'
+      ) || 'ここに入力内容が表示されます';
+    }
+
+    instructionInput.addEventListener('input', updateInstructionPreview);
+  }
+</script>
 {% endblock %}

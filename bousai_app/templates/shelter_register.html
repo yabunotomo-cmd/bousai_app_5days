@@ -1,23 +1,201 @@
 {% extends "base.html" %}
 
+{% block title %}避難所登録 - 防災アプリ{% endblock %}
+
 {% block content %}
+<style>
+  .register-form {
+    padding: 24px;
+    background: white;
+    box-shadow: 0 8px 24px rgba(31, 70, 125, 0.08);
+  }
+
+  .register-form label,
+  .register-form legend {
+    font-weight: 700;
+  }
+
+  .register-form input:not([type="checkbox"]),
+  .register-form select,
+  .register-form textarea {
+    width: 100%;
+    max-width: 620px;
+    margin-top: 6px;
+    padding: 10px 12px;
+    border: 1px solid #b9c7db;
+    border-radius: 4px;
+    font: inherit;
+  }
+
+  .register-form textarea {
+    min-height: 100px;
+    resize: vertical;
+  }
+
+  .register-form fieldset {
+    margin: 20px 0;
+    padding: 16px;
+    border: 1px solid #d9e0eb;
+  }
+
+  .checkbox-group {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px 18px;
+    margin-top: 10px;
+  }
+
+  .checkbox-group label {
+    font-weight: normal;
+    white-space: nowrap;
+  }
+
+  .form-actions {
+    margin-top: 24px;
+  }
+
+  .form-actions button {
+    border: 0;
+    padding: 12px 20px;
+    color: white;
+    background: #2859aa;
+    font: inherit;
+    cursor: pointer;
+  }
+
+  .form-error,
+  .form-success {
+    padding: 12px 16px;
+  }
+
+  .form-error {
+    color: #8a1c1c;
+    background: #fff0f0;
+  }
+
+  .form-success {
+    color: #176b38;
+    background: #effaf2;
+  }
+
+  .register-links {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px 24px;
+    margin-bottom: 18px;
+  }
+</style>
+
 <h2>避難所登録</h2>
 <p>新しい避難所情報を登録します。</p>
 
-<!-- 成功・エラーメッセージ表示 -->
+<nav class="register-links" aria-label="避難所管理メニュー">
+  <a href="{{ url_for('all_shelters') }}">登録済み避難所一覧</a>
+  <a href="{{ url_for('shelter_search') }}">避難所検索</a>
+</nav>
+
 {% if success %}
-  <p>{{ message }}</p>
+  <p class="form-success" role="status">{{ message }}</p>
 {% endif %}
 
 {% if error %}
-  <p>{{ message }}</p>
+  <div class="form-error" role="alert">
+    {% if messages %}
+      <ul>
+        {% for item in messages %}<li>{{ item }}</li>{% endfor %}
+      </ul>
+    {% else %}
+      {{ message }}
+    {% endif %}
+  </div>
 {% endif %}
 
-<form method="POST">
+{% set data = form_data or {} %}
+<form class="register-form" method="post">
   <p>
     <label for="name">避難所名（必須）</label><br>
-    <input type="text" id="name" name="name">
+    <input type="text" id="name" name="name" value="{{ data.get('name', [''])[0] }}" required>
   </p>
-  <p><button type="submit">登録</button></p>
+  <p>
+    <label for="address">住所（必須）</label><br>
+    <input type="text" id="address" name="address" value="{{ data.get('address', [''])[0] }}" required>
+  </p>
+  <p>
+    <label for="shelter_type">避難所種別（必須）</label><br>
+    <select id="shelter_type" name="shelter_type" required>
+      <option value="">選択してください</option>
+      {% for option in shelter_types %}<option value="{{ option }}"{% if data.get('shelter_type', [''])[0] == option %} selected{% endif %}>{{ option }}</option>{% endfor %}
+    </select>
+  </p>
+  <p>
+    <label for="capacity">最大収容人数（人）</label><br>
+    <input type="number" id="capacity" name="capacity" min="0" value="{{ data.get('capacity', [''])[0] }}" required>
+  </p>
+  <p>
+    <label for="current_capacity">現在の収容人数（人）</label><br>
+    <input type="number" id="current_capacity" name="current_capacity" min="0" value="{{ data.get('current_capacity', [''])[0] }}" required>
+  </p>
+
+  <fieldset>
+    <legend>設備情報</legend>
+    <div class="checkbox-group">
+      {% for option in facility_options %}<label><input type="checkbox" name="facilities" value="{{ option }}"{% if option in data.get('facilities', []) %} checked{% endif %}> {{ option }}</label>{% endfor %}
+    </div>
+  </fieldset>
+
+  <fieldset>
+    <legend>バリアフリー・要配慮者対応</legend>
+    <div class="checkbox-group">
+      {% for option in barrier_free_options %}<label><input type="checkbox" name="barrier_free" value="{{ option }}"{% if option in data.get('barrier_free', []) %} checked{% endif %}> {{ option }}</label>{% endfor %}
+    </div>
+  </fieldset>
+
+  <fieldset>
+    <legend>駐車場</legend>
+    <div class="checkbox-group">
+      {% for option in parking_options %}<label><input type="checkbox" name="parking" value="{{ option }}"{% if option in data.get('parking', []) %} checked{% endif %}> {{ option }}</label>{% endfor %}
+    </div>
+  </fieldset>
+
+  <p>
+    <label for="pets_allowed">ペット（必須）</label><br>
+    <select id="pets_allowed" name="pets_allowed" required>
+      <option value="">選択してください</option>
+      {% for option in pet_options %}<option value="{{ option }}"{% if data.get('pets_allowed', [''])[0] == option %} selected{% endif %}>{{ option }}</option>{% endfor %}
+    </select>
+  </p>
+  <p>
+    <label for="notes">備考</label><br>
+    <textarea id="notes" name="notes">{{ data.get('notes', [''])[0] }}</textarea>
+  </p>
+  <p>
+    <label for="status">開設状況（必須）</label><br>
+    <select id="status" name="status" required>
+      <option value="">選択してください</option>
+      {% for option in status_options %}<option value="{{ option }}"{% if data.get('status', [''])[0] == option %} selected{% endif %}>{{ option }}</option>{% endfor %}
+    </select>
+  </p>
+  <p>
+    <label for="hours_from">利用可能時間（必須）</label><br>
+    <select id="hours_from" name="hours_from" required>
+      <option value="">開始時刻を選択</option>
+      {% for option in hour_options %}<option value="{{ option }}"{% if data.get('hours_from', [''])[0] == option %} selected{% endif %}>{{ option }}</option>{% endfor %}
+    </select>
+    ～
+    <select id="hours_to" name="hours_to" required>
+      <option value="">終了時刻を選択</option>
+      {% for option in hour_options %}<option value="{{ option }}"{% if data.get('hours_to', [''])[0] == option %} selected{% endif %}>{{ option }}</option>{% endfor %}
+    </select>
+  </p>
+  <p>
+    <label for="contact_phone">電話番号（必須）</label><br>
+    <input type="tel" id="contact_phone" name="contact_phone" inputmode="numeric" pattern="[0-9]+" value="{{ data.get('contact_phone', [''])[0] }}" required>
+  </p>
+  <p>
+    <label for="contact_department">担当部署（必須）</label><br>
+    <input type="text" id="contact_department" name="contact_department" value="{{ data.get('contact_department', [''])[0] }}" required>
+  </p>
+
+  <div class="form-actions"><button type="submit">入力内容を確認する</button></div>
 </form>
 {% endblock %}

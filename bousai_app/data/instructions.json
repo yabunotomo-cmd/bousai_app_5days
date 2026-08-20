@@ -1,5 +1,14 @@
 [
   {
+    "id": 5,
+    "target": "住民",
+    "content": "ああ@(高齢者)aaa",
+    "shelter": "",
+    "status": "発信中",
+    "created_at": "2026年08月20日 11:47",
+    "updated_at": "2026年08月20日 11:47"
+  },
+  {
     "id": 4,
     "target": "住民",
     "content": "B避難所へ避難してください",

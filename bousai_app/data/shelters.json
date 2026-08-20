@@ -10,5 +10,200 @@
   {
     "id": 5,
     "name": "鵠洋小学校"
+  },
+  {
+    "id": 6,
+    "name": "松原第七中学校"
+  },
+  {
+    "id": 7,
+    "name": "七中",
+    "address": "松原市西野々",
+    "shelter_type": "指定避難所",
+    "capacity": 300,
+    "current_capacity": 0,
+    "facilities": [
+      "トイレ",
+      "Wi-Fi",
+      "充電設備",
+      "医療・救護設備"
+    ],
+    "barrier_free": [
+      "車椅子対応",
+      "おむつ交換スペース"
+    ],
+    "parking": [
+      "駐車場あり"
+    ],
+    "pets_allowed": "可",
+    "notes": "",
+    "status": "開設",
+    "hours": "10:00から22:00",
+    "contact_phone": "0120444444444",
+    "contact_department": "青森市職員"
+  },
+  {
+    "id": 8,
+    "name": "あ",
+    "address": "あ",
+    "shelter_type": "指定避難所",
+    "capacity": 300,
+    "current_capacity": 10,
+    "facilities": [
+      "トイレ",
+      "発電機",
+      "充電設備",
+      "医療・救護設備"
+    ],
+    "barrier_free": [
+      "車椅子対応",
+      "多目的トイレ",
+      "妊婦・乳幼児対応",
+      "おむつ交換スペース"
+    ],
+    "parking": [
+      "駐車場あり",
+      "大型車対応"
+    ],
+    "pets_allowed": "可",
+    "notes": "あ",
+    "status": "開設",
+    "hours": "07:00〜21:00",
+    "hours_from": "07:00",
+    "hours_to": "21:00",
+    "contact_phone": "0120444444444",
+    "contact_department": "青森市職員"
+  },
+  {
+    "id": 9,
+    "name": "青森市立長島小学校",
+    "address": "青森市長島2丁目8-6",
+    "latitude": 40.8227,
+    "longitude": 140.7428,
+    "capacity": "要確認",
+    "facilities": "体育館・トイレ・水道",
+    "shelter_type": "指定避難所",
+    "status": "開設中"
+  },
+  {
+    "id": 10,
+    "name": "青森市立浦町小学校",
+    "address": "青森市東大野1丁目3-1",
+    "latitude": 40.8127,
+    "longitude": 140.7556,
+    "capacity": "要確認",
+    "facilities": "体育館・トイレ・水道",
+    "shelter_type": "指定避難所",
+    "status": "開設中"
+  },
+  {
+    "id": 11,
+    "name": "青森市立筒井小学校",
+    "address": "青森市筒井1丁目1-1",
+    "latitude": 40.7975,
+    "longitude": 140.7752,
+    "capacity": "要確認",
+    "facilities": "体育館・トイレ・水道",
+    "shelter_type": "指定避難所",
+    "status": "開設中"
+  },
+  {
+    "id": 12,
+    "name": "青森市立堤小学校",
+    "address": "青森市松原2丁目4-4",
+    "latitude": 40.8103,
+    "longitude": 140.7602,
+    "capacity": "要確認",
+    "facilities": "体育館・トイレ・水道",
+    "shelter_type": "指定避難所",
+    "status": "開設中"
+  },
+  {
+    "id": 13,
+    "name": "青森市立古川小学校",
+    "address": "青森市古川3丁目7-14",
+    "latitude": 40.8202,
+    "longitude": 140.7354,
+    "capacity": "要確認",
+    "facilities": "体育館・トイレ・水道",
+    "shelter_type": "指定避難所",
+    "status": "開設中"
+  },
+  {
+    "id": 14,
+    "name": "青森市立篠田小学校",
+    "address": "青森市篠田3丁目16-2",
+    "latitude": 40.8271,
+    "longitude": 140.7302,
+    "capacity": "要確認",
+    "facilities": "体育館・トイレ・水道",
+    "shelter_type": "指定避難所",
+    "status": "開設中"
+  },
+  {
+    "id": 15,
+    "name": "青森市立油川小学校",
+    "address": "青森市油川字船岡36",
+    "latitude": 40.8585,
+    "longitude": 140.6904,
+    "capacity": "要確認",
+    "facilities": "体育館・トイレ・水道",
+    "shelter_type": "指定避難所",
+    "status": "開設中"
+  },
+  {
+    "id": 16,
+    "name": "青森市立造道小学校",
+    "address": "青森市造道3丁目4-16",
+    "latitude": 40.8274,
+    "longitude": 140.7782,
+    "capacity": "要確認",
+    "facilities": "体育館・トイレ・水道",
+    "shelter_type": "指定避難所",
+    "status": "開設中"
+  },
+  {
+    "id": 17,
+    "name": "青森市立浜田小学校",
+    "address": "青森市浜田字豊田36-2",
+    "latitude": 40.7955,
+    "longitude": 140.7525,
+    "capacity": "要確認",
+    "facilities": "体育館・トイレ・水道",
+    "shelter_type": "指定避難所",
+    "status": "開設中"
+  },
+  {
+    "id": 18,
+    "name": "青森市立大野小学校",
+    "address": "青森市大野字山下150-5",
+    "latitude": 40.8037,
+    "longitude": 140.7358,
+    "capacity": "要確認",
+    "facilities": "体育館・トイレ・水道",
+    "shelter_type": "指定避難所",
+    "status": "開設中"
+  },
+  {
+    "id": 19,
+    "name": "青森市立佃小学校",
+    "address": "青森市佃2丁目6-1",
+    "latitude": 40.8279,
+    "longitude": 140.7903,
+    "capacity": "要確認",
+    "facilities": "体育館・トイレ・水道",
+    "shelter_type": "指定避難所",
+    "status": "開設中"
+  },
+  {
+    "id": 20,
+    "name": "青森市立小柳小学校",
+    "address": "青森市小柳4丁目6-1",
+    "latitude": 40.8177,
+    "longitude": 140.8065,
+    "capacity": "要確認",
+    "facilities": "体育館・トイレ・水道",
+    "shelter_type": "指定避難所",
+    "status": "開設中"
   }
 ]

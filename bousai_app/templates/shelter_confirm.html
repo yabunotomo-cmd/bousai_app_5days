@@ -1,0 +1,81 @@
+{% extends "base.html" %}
+
+{% block title %}入力内容の確認 - 防災アプリ{% endblock %}
+
+{% block content %}
+<h2>入力内容の確認</h2>
+<p>以下の内容で避難所を登録します。</p>
+
+<style>
+  .confirm-table {
+    width: 100%;
+    border-collapse: collapse;
+    background: white;
+  }
+
+  .confirm-table th,
+  .confirm-table td {
+    padding: 10px 14px;
+    border: 1px solid #d9e0eb;
+    text-align: left;
+    vertical-align: top;
+  }
+
+  .confirm-table th {
+    width: 12em;
+    background: #eef3fa;
+  }
+
+  .confirm-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+    margin-top: 20px;
+  }
+
+  .confirm-actions button {
+    padding: 10px 18px;
+    border: 0;
+    color: white;
+    background: #2859aa;
+    font: inherit;
+    cursor: pointer;
+  }
+
+  .confirm-actions button[name="action"][value="edit"] {
+    color: #204b95;
+    background: #eef3fa;
+  }
+</style>
+
+{% set data = form_data or {} %}
+{% macro value(name, fallback='未入力') %}{{ data.get(name, [fallback])[0] or fallback }}{% endmacro %}
+{% macro selected(name) %}{{ data.get(name, [])|join('、') or '未入力' }}{% endmacro %}
+
+<table class="confirm-table">
+  <tbody>
+    <tr><th>避難所名</th><td>{{ value('name') }}</td></tr>
+    <tr><th>住所</th><td>{{ value('address') }}</td></tr>
+    <tr><th>避難所種別</th><td>{{ value('shelter_type') }}</td></tr>
+    <tr><th>最大収容人数（人）</th><td>{{ value('capacity') }}</td></tr>
+    <tr><th>現在の収容人数（人）</th><td>{{ value('current_capacity') }}</td></tr>
+    <tr><th>設備情報</th><td>{{ selected('facilities') }}</td></tr>
+    <tr><th>バリアフリー情報</th><td>{{ selected('barrier_free') }}</td></tr>
+    <tr><th>駐車場</th><td>{{ selected('parking') }}</td></tr>
+    <tr><th>ペットの受け入れ</th><td>{{ value('pets_allowed') }}</td></tr>
+    <tr><th>開設状況</th><td>{{ value('status') }}</td></tr>
+    <tr><th>利用可能時間</th><td>{{ value('hours_from') }} ～ {{ value('hours_to') }}</td></tr>
+    <tr><th>電話番号</th><td>{{ value('contact_phone') }}</td></tr>
+    <tr><th>担当部署</th><td>{{ value('contact_department') }}</td></tr>
+    <tr><th>備考</th><td>{{ value('notes', 'なし') }}</td></tr>
+  </tbody>
+</table>
+
+<form class="confirm-actions" method="post" action="{{ url_for('shelter_register') }}">
+  {% for name, values in data.items() %}
+    {% for item in values %}<input type="hidden" name="{{ name }}" value="{{ item }}">{% endfor %}
+  {% endfor %}
+  <button type="submit" name="action" value="save">登録</button>
+  <button type="submit" name="action" value="edit">入力内容を修正する</button>
+</form>
+{% endblock %}

@@ -1,0 +1,163 @@
+{% extends "base.html" %}
+
+{% block title %}{{ shelter.name }} - 避難所詳細{% endblock %}
+
+{% block content %}
+<style>
+  .shelter-basic-info {
+    width: 100%;
+    border-collapse: collapse;
+    background: white;
+  }
+
+  .shelter-detail-title {
+    text-align: center;
+  }
+
+  .section-heading-with-legend {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+  }
+
+  .checkbox-legend {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px 14px;
+    color: #526176;
+    font-size: 0.9rem;
+  }
+
+  input[type="checkbox"]:disabled {
+    width: 16px;
+    height: 16px;
+    margin: 0 5px 0 0;
+    border: 2px solid #2859aa;
+    border-radius: 3px;
+    background: white;
+    accent-color: #2859aa;
+    opacity: 1;
+    appearance: none;
+    -webkit-appearance: none;
+    vertical-align: -3px;
+  }
+
+  input[type="checkbox"]:disabled:checked {
+    background-color: #2859aa;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M3 8.5 6.5 12 13 4.5' fill='none' stroke='white' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+    background-position: center;
+    background-repeat: no-repeat;
+  }
+
+  .shelter-basic-info th,
+  .shelter-basic-info td {
+    padding: 12px 16px;
+    border: 1px solid #d9e0eb;
+    text-align: left;
+    vertical-align: top;
+  }
+
+  .shelter-basic-info th {
+    width: 10em;
+    white-space: nowrap;
+    color: #26364a;
+    background: #eef3fa;
+  }
+
+  .map-url {
+    overflow-wrap: anywhere;
+  }
+
+  @media (max-width: 600px) {
+    .shelter-basic-info th,
+    .shelter-basic-info td {
+      padding: 10px;
+    }
+
+    .shelter-basic-info th {
+      width: 7em;
+    }
+  }
+</style>
+
+<p><a href="{{ url_for('shelter_search') }}">避難所検索に戻る</a></p>
+<h2 class="shelter-detail-title">避難所詳細</h2>
+
+<h3>基本情報</h3>
+<table class="shelter-basic-info">
+  <tbody>
+    <tr>
+      <th scope="row">避難所名</th>
+      <td>{{ shelter.name }}</td>
+    </tr>
+    <tr>
+      <th scope="row">住所</th>
+      <td>{{ shelter.get('address', '未登録') }}</td>
+    </tr>
+    <tr>
+      <th scope="row">Google Map</th>
+      <td>
+        {% set google_map_url = shelter.get('google_map_url') or 'https://www.google.com/maps/search/?api=1&query=' ~ (shelter.get('address') or shelter.name)|urlencode %}
+        <a class="map-url" href="{{ google_map_url }}" target="_blank" rel="noopener noreferrer">{{ google_map_url }}</a>
+      </td>
+    </tr>
+    <tr>
+      <th scope="row">収容人数</th>
+      <td>{{ shelter.get('capacity', '未登録') }}</td>
+    </tr>
+    <tr>
+      <th scope="row">混雑状況</th>
+      <td>
+        {{ crowding.status }}
+        {% if crowding.rate is not none %}（混雑率: {{ crowding.rate }}%）{% endif %}
+        {% if crowding.available is not none %}<br>空き人数: {{ crowding.available }}人 / 現在: {{ shelter.get('current_capacity') }}人{% endif %}
+      </td>
+    </tr>
+    <tr>
+      <th scope="row">開設状況</th>
+      <td>{{ shelter.get('status') or shelter.get('opening_status', '未登録') }}</td>
+    </tr>
+    <tr>
+      <th scope="row">利用可能時間</th>
+      <td>{{ shelter.get('hours') or shelter.get('available_hours', '未登録') }}</td>
+    </tr>
+    <tr>
+      <th scope="row">連絡先</th>
+      <td>{{ shelter.get('contact_phone') or shelter.get('contact') or shelter.get('phone', '未登録') }}</td>
+    </tr>
+  </tbody>
+</table>
+
+<div class="section-heading-with-legend">
+  <h3>設備情報</h3>
+  <div class="checkbox-legend" aria-label="チェックボックスの見方">
+    <label><input type="checkbox" checked disabled> あり</label>
+    <label><input type="checkbox" disabled> なし</label>
+  </div>
+</div>
+<fieldset>
+  <legend>利用できる設備</legend>
+  {% for option in facility_options %}
+    <label><input type="checkbox"{% if option in shelter.get('facilities', []) %} checked{% endif %} disabled> {{ option }}</label>
+  {% endfor %}
+</fieldset>
+
+<h3>バリアフリー情報</h3>
+<fieldset>
+  <legend>対応状況</legend>
+  {% for option in barrier_free_options %}
+    <label><input type="checkbox"{% if option in shelter.get('barrier_free', []) %} checked{% endif %} disabled> {{ option }}</label>
+  {% endfor %}
+</fieldset>
+
+<h3>駐車場</h3>
+<fieldset>
+  <legend>利用状況</legend>
+  {% for option in parking_options %}
+    <label><input type="checkbox"{% if option in shelter.get('parking', []) %} checked{% endif %} disabled> {{ option }}</label>
+  {% endfor %}
+</fieldset>
+
+<p><a href="{{ url_for('shelter_search') }}">避難所検索に戻る</a></p>
+{% endblock %}

@@ -1,8 +1,344 @@
 {% extends "base.html" %}
 
-{% block content %}
-<h2>避難所検索</h2>
-<p>登録されている避難所を確認できます。</p>
+{% block title %}避難所検索 - 防災アプリ{% endblock %}
 
-<p><a href="/all_shelters">全施設一覧</a></p>
+{% block content %}
+<style>
+  .search-layout {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(360px, 1fr);
+    gap: 24px;
+    align-items: start;
+  }
+
+  .search-panel,
+  .map-panel {
+    padding: 22px;
+    border: 1px solid #d9e0eb;
+    background: white;
+    box-shadow: 0 8px 24px rgba(31, 70, 125, 0.08);
+  }
+
+  .search-panel h2,
+  .map-panel h2 {
+    margin-top: 0;
+    color: #2859aa;
+  }
+
+  .search-form input[type="text"] {
+    width: 100%;
+    padding: 11px 12px;
+    border: 1px solid #b9c7db;
+    border-radius: 4px;
+    font: inherit;
+  }
+
+  .search-button,
+  .location-button {
+    margin-top: 10px;
+    border: 0;
+    padding: 10px 16px;
+    color: white;
+    background: #2859aa;
+    font: inherit;
+    cursor: pointer;
+  }
+
+  .location-button {
+    background: #526176;
+  }
+
+  .filter-heading {
+    margin: 0 0 10px;
+    color: #26364a;
+    font-size: 1.05rem;
+  }
+
+  .filter-toggle {
+    width: 100%;
+    margin-top: 20px;
+    padding: 11px 14px;
+    border: 1px solid #b9c7db;
+    color: #204b95;
+    background: #f7f9fc;
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+  }
+
+  .filter-toggle:hover,
+  .filter-toggle:focus {
+    background: #eef3fa;
+  }
+
+  .filter-options {
+    margin-top: 8px;
+    padding: 14px;
+    border: 1px solid #d9e0eb;
+  }
+
+  .filter-options[hidden] {
+    display: none;
+  }
+
+  .filter-group {
+    display: grid;
+    gap: 9px;
+  }
+
+  .filter-group label {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .result-heading {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 12px;
+    margin-top: 28px;
+  }
+
+  .result-heading h2 {
+    margin: 0;
+  }
+
+  .result-count {
+    color: #526176;
+    white-space: nowrap;
+  }
+
+  .shelter-list {
+    display: grid;
+    gap: 12px;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+
+  .additional-shelters {
+    margin-top: 14px;
+    border-top: 1px solid #d9e0eb;
+  }
+
+  .additional-shelters summary {
+    padding: 12px 4px;
+    color: #204b95;
+    cursor: pointer;
+    font-weight: 700;
+  }
+
+  .shelter-item {
+    display: block;
+    padding: 15px;
+    border: 1px solid #d9e0eb;
+    color: #26364a;
+    text-decoration: none;
+    cursor: pointer;
+  }
+
+  .shelter-item:hover,
+  .shelter-item:focus {
+    border-color: #2859aa;
+    background: #f7f9fc;
+    outline: none;
+  }
+
+  .shelter-item strong {
+    color: #204b95;
+    font-size: 1.05rem;
+  }
+
+  .shelter-item p {
+    margin: 6px 0 0;
+  }
+
+  .empty-result {
+    padding: 16px;
+    border: 1px dashed #b9c7db;
+    color: #526176;
+  }
+
+  #shelter-map {
+    height: 360px;
+    border-radius: 8px;
+    background: #eef3fa;
+  }
+
+  .map-note {
+    color: #526176;
+    font-size: 0.88rem;
+  }
+
+  .location-status {
+    min-height: 1.4em;
+    color: #176b38;
+  }
+
+  @media (max-width: 720px) {
+    .search-layout {
+      grid-template-columns: 1fr;
+    }
+
+    #shelter-map {
+      height: 260px;
+    }
+  }
+</style>
+
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+<div class="search-layout">
+  <section class="search-panel">
+    <h2>避難所を検索</h2>
+    <form class="search-form" method="get">
+      <label for="keyword">キーワード</label>
+      <input type="text" id="keyword" name="keyword" value="{{ keyword }}" placeholder="検索することを入れてください">
+      <button class="filter-toggle" id="filter-toggle" type="button" aria-expanded="false" aria-controls="filter-options">
+        絞り込み検索 <span aria-hidden="true">▼</span>
+      </button>
+      <div class="filter-options" id="filter-options" hidden>
+        <fieldset>
+          <legend class="filter-heading">絞り込み条件</legend>
+        <div class="filter-group">
+          <strong>開設状況</strong>
+          {% for option in status_options %}
+            <label><input type="checkbox" name="status" value="{{ option }}"{% if option in filters.statuses %} checked{% endif %}> {{ option }}</label>
+          {% endfor %}
+          <strong>設備情報</strong>
+          {% for option in facility_options %}
+            <label><input type="checkbox" name="facility" value="{{ option }}"{% if option in filters.facilities %} checked{% endif %}> {{ option }}</label>
+          {% endfor %}
+          <strong>バリアフリー・要配慮者対応</strong>
+          {% for option in barrier_free_options %}
+            <label><input type="checkbox" name="barrier_free_item" value="{{ option }}"{% if option in filters.barrier_free_items %} checked{% endif %}> {{ option }}</label>
+          {% endfor %}
+          <strong>駐車場</strong>
+          {% for option in parking_options %}
+            <label><input type="checkbox" name="parking" value="{{ option }}"{% if option in filters.parking %} checked{% endif %}> {{ option }}</label>
+          {% endfor %}
+          <label><input type="checkbox" name="pet_allowed" value="1"{% if filters.pet_allowed %} checked{% endif %}> ペット可</label>
+          <strong>避難所種別</strong>
+          {% for option in shelter_types %}
+            <label><input type="checkbox" name="shelter_type" value="{{ option }}"{% if option in filters.shelter_types %} checked{% endif %}> {{ option }}</label>
+          {% endfor %}
+        </div>
+        </fieldset>
+      </div>
+      <button class="search-button" type="submit">検索</button>
+    </form>
+    <button class="location-button" id="location-search" type="button">📍 現在地から検索</button>
+    <p class="location-status" id="location-status" aria-live="polite"></p>
+
+    <div class="result-heading">
+      <h2>避難所一覧</h2>
+      <span class="result-count">{{ shelters|length }}件</span>
+    </div>
+    {% if shelters %}
+      {% macro shelter_card(shelter) %}
+        {% set shelter_crowding = crowding.get(shelter.id) %}
+        <li>
+          <a class="shelter-item" href="{{ url_for('shelter_detail', shelter_id=shelter.id) }}">
+            <strong>避難所{{ shelter.id }}：{{ shelter.name }}</strong>
+            <p>収容人数：{{ shelter.get('capacity', '要確認') }}</p>
+            <p>設備：{% if shelter.facilities is string %}{{ shelter.facilities }}{% elif shelter.facilities %}{{ shelter.facilities|join('・') }}{% else %}未登録{% endif %}</p>
+            <p>開設状況：{{ shelter.get('status') or shelter.get('opening_status', '開設中') }}</p>
+            <p>混雑状況：{{ shelter_crowding.status }}{% if shelter_crowding.rate is not none %}（{{ shelter_crowding.rate }}%）{% endif %}</p>
+            {% if shelter_crowding.available is not none %}<p>空き人数：{{ shelter_crowding.available }}人 / 現在：{{ shelter.get('current_capacity') }}人</p>{% endif %}
+            <p>距離：未計測</p>
+            <span>詳細を見る →</span>
+          </a>
+        </li>
+      {% endmacro %}
+      <ul class="shelter-list">
+        {% for shelter in shelters[:5] %}{{ shelter_card(shelter) }}{% endfor %}
+      </ul>
+      {% if shelters|length > 5 %}
+        <details class="additional-shelters">
+          <summary>他の避難所を表示（{{ shelters|length - 5 }}件）</summary>
+          <ul class="shelter-list">
+            {% for shelter in shelters[5:] %}{{ shelter_card(shelter) }}{% endfor %}
+          </ul>
+        </details>
+      {% endif %}
+      <p class="map-note">避難所は現在地からの直線距離です。距離は現在地取得後に表示できます。</p>
+    {% else %}
+      <p class="empty-result">該当する避難所が見つかりませんでした</p>
+    {% endif %}
+  </section>
+
+  <section class="map-panel">
+    <h2>避難所マップ</h2>
+    <div id="shelter-map" role="region" aria-label="避難所地図">
+      <p>地図を読み込んでいます...</p>
+    </div>
+    <p class="map-note">避難所は現在地からの直線距離です。</p>
+  </section>
+</div>
+
+<script>
+  const mapShelters = {{ map_shelters|tojson }};
+  const mapElement = document.querySelector('#shelter-map');
+  const locationButton = document.querySelector('#location-search');
+  const locationStatus = document.querySelector('#location-status');
+  let mapInitialized = false;
+
+  function initializeShelterMap() {
+    if (mapInitialized || !window.L) {
+      return false;
+    }
+    mapInitialized = true;
+    const map = L.map(mapElement).setView([40.8220, 140.7470], 13);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      attribution: '© OpenStreetMap contributors'
+    }).addTo(map);
+    const bounds = [];
+    mapShelters.forEach(function(shelter) {
+      const point = [shelter.latitude, shelter.longitude];
+      bounds.push(point);
+      L.marker(point).addTo(map).bindPopup(
+        '避難所' + shelter.id + '：' + shelter.name + '<br>' +
+        '<a href="/shelter/' + encodeURIComponent(shelter.id) + '">詳細を見る</a>'
+      );
+    });
+    if (bounds.length > 1) {
+      map.fitBounds(bounds, {padding: [24, 24]});
+    }
+    return true;
+  }
+
+  let mapAttempts = 0;
+  const mapRetry = setInterval(function() {
+    mapAttempts += 1;
+    if (initializeShelterMap()) {
+      clearInterval(mapRetry);
+    } else if (mapAttempts >= 20) {
+      clearInterval(mapRetry);
+      mapElement.textContent = '地図を読み込めませんでした';
+    }
+  }, 500);
+  initializeShelterMap();
+
+  locationButton.addEventListener('click', function() {
+    if (!navigator.geolocation) {
+      locationStatus.textContent = '現在地を取得できませんでした。';
+      return;
+    }
+    navigator.geolocation.getCurrentPosition(
+      function() { locationStatus.textContent = '現在地を取得しました。'; },
+      function() { locationStatus.textContent = '現在地を取得できませんでした。'; }
+    );
+  });
+
+  const filterToggle = document.querySelector('#filter-toggle');
+  const filterOptions = document.querySelector('#filter-options');
+  filterToggle.addEventListener('click', function() {
+    const isOpen = filterOptions.hidden;
+    filterOptions.hidden = !isOpen;
+    filterToggle.setAttribute('aria-expanded', String(isOpen));
+    filterToggle.querySelector('span').textContent = isOpen ? '▲' : '▼';
+  });
+</script>
 {% endblock %}

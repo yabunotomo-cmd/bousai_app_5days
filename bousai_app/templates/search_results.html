@@ -6,7 +6,12 @@
 {% if results %}
   <ul>
     {% for shelter in results %}
-    <li>{{ shelter.name }}</li>
+    <li>
+      <a href="{{ url_for('shelter_detail', shelter_id=shelter.id) }}">{{ shelter.name }}</a><br>
+      住所：{{ shelter.get('address', '未登録') }}<br>
+      {% set google_map_url = shelter.get('google_map_url') or 'https://www.google.com/maps/search/?api=1&query=' ~ (shelter.get('address') or shelter.name)|urlencode %}
+      Google Map：<a href="{{ google_map_url }}" target="_blank" rel="noopener noreferrer">{{ google_map_url }}</a>
+    </li>
     {% endfor %}
   </ul>
 {% else %}

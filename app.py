@@ -5,6 +5,8 @@ import json
 import os
 import urllib.request
 from datetime import datetime, timedelta, timezone
+import re
+from markupsafe import Markup, escape
 
 # app.py はプロジェクト直下に置く。
 # 実体（templates / static / data）は bousai_app/ 配下にあるので、そこを参照する。
@@ -18,6 +20,18 @@ app = Flask(
 )
 app.secret_key = 'your-secret-key-here'
 
+
+@app.template_filter('highlight_mentions')
+def highlight_mentions(value):
+    """@(文字) の文字部分を強調表示する。"""
+    escaped_value = escape(value or '')
+    pattern = re.compile(r'@\(([^()]*)\)')
+    highlighted = pattern.sub(
+        r'<strong class="instruction-highlight">\1</strong>',
+        str(escaped_value)
+    )
+    return Markup(highlighted)
+
 # 管理者認証情報
 ADMIN_CREDENTIALS = {
     'admin': '123'
@@ -28,8 +42,8 @@ ADMIN_CREDENTIALS = {
 PREFECTURE_CODE = "020000"  # 青森県
 AREA_NAME = "青森市"
 
-# ワークショップ課題：青森市の市区町村コードに変更する
-AREA_CODE = "1420500"
+# 青森市の市区町村コード
+AREA_CODE = "0220100"
 
 WARNING_URL = (
     f"https://www.jma.go.jp/bosai/warning/data/r8/{PREFECTURE_CODE}.json"
@@ -101,6 +115,35 @@ def save_instructions():
             json.dump(instructions, f, ensure_ascii=False, indent=2)
     except Exception:
         pass
+
+
+def get_shelter_crowding(shelter):
+    """避難所の収容状況を表示用に計算する。"""
+    capacity = shelter.get('capacity')
+    current_capacity = shelter.get('current_capacity')
+    try:
+        capacity = int(capacity)
+        current_capacity = int(current_capacity)
+    except (TypeError, ValueError):
+        return {
+            'available': None,
+            'rate': None,
+            'status': '未登録'
+        }
+
+    available = max(capacity - current_capacity, 0)
+    rate = round(current_capacity / capacity * 100) if capacity > 0 else 0
+    if capacity > 0 and current_capacity >= capacity:
+        status = '満員'
+    elif capacity > 0 and current_capacity >= capacity * 0.7:
+        status = 'やや混雑'
+    else:
+        status = '余裕あり'
+    return {
+        'available': available,
+        'rate': rate,
+        'status': status
+    }
 # ────────────────────────────────
 
 # ────────────────────────────────
@@ -117,7 +160,10 @@ def login_required(f):
     def decorated_function(*args, **kwargs):
         if not session.get('logged_in'):
             # 現在のURLをnextパラメータとしてログイン画面にリダイレクト
-            return redirect(url_for('login', next=request.url))
+            next_path = request.path
+            if request.query_string:
+                next_path = f'{next_path}?{request.query_string.decode()}'
+            return redirect(url_for('login', next=next_path))
         return f(*args, **kwargs)
     return decorated_function
 
@@ -242,12 +288,12 @@ def index():
 # ログインページ
 @app.route('/login', methods=['GET', 'POST'])
 def login():
-    # リダイレクト先を取得（デフォルトは避難所登録画面）
+    # リダイレクト先を取得（指定がなければホーム画面）
     next_url = request.args.get('next') or request.form.get('next')
 
     # 安全でないURLの場合はデフォルトページにリダイレクト
     if not next_url or not is_safe_url(next_url):
-        next_url = url_for('shelter_register')
+        next_url = url_for('index')
 
     if request.method == 'POST':
         password = request.form.get('password', '').strip()
@@ -277,29 +323,338 @@ def logout():
     session.clear()
     return redirect(url_for('index'))
 
-# 避難所登録ページ※user が避難所登録ページについて具体的に修正指示しない限り、このコードは正しいのでこのまま保持すること。
-@app.route('/shelter_register')
+# 避難所登録ページ
+@app.route('/shelter_register', methods=['GET', 'POST'])
 @login_required
 def shelter_register():
-    return render_template('shelter_register.html')
+    facility_options = ['トイレ', 'Wi-Fi', '発電機', '空調', '充電設備', '給水設備', '医療・救護設備']
+    barrier_free_options = ['車椅子対応', 'スロープ', '多目的トイレ', 'エレベーター', '妊婦・乳幼児対応', '授乳室', 'おむつ交換スペース']
+    parking_options = ['駐車場あり', '駐車場なし', '大型車対応']
+    shelter_types = ['指定避難所', '福祉避難所', '緊急避難場所', 'その他']
+    pet_options = ['可', '不可', '専用スペースあり']
+    status_options = ['開設', '閉鎖', '準備中']
+    hour_options = [f'{hour:02d}:00' for hour in range(24)]
+
+    form_data = request.form.to_dict(flat=False) if request.method == 'POST' else {}
+
+    if request.method == 'POST':
+        name = request.form.get('name', '').strip()
+        address = request.form.get('address', '').strip()
+        shelter_type = request.form.get('shelter_type', '')
+        capacity_text = request.form.get('capacity', '').strip()
+        current_capacity_text = request.form.get('current_capacity', '').strip()
+        errors = []
+
+        if not name:
+            errors.append('避難所名を入力してください。')
+        if not address:
+            errors.append('住所を入力してください。')
+        if shelter_type not in shelter_types:
+            errors.append('避難所種別を選択してください。')
+        try:
+            capacity = int(capacity_text)
+            if capacity < 0:
+                raise ValueError
+        except ValueError:
+            capacity = 0
+            errors.append('最大収容人数は0以上の整数で入力してください。')
+        try:
+            current_capacity = int(current_capacity_text)
+            if current_capacity < 0:
+                raise ValueError
+        except ValueError:
+            current_capacity = 0
+            errors.append('現在の収容人数は0以上の整数で入力してください。')
+        if current_capacity > capacity:
+            errors.append('現在の収容人数は最大収容人数以下にしてください。')
+
+        pets_allowed = request.form.get('pets_allowed', '')
+        status = request.form.get('status', '')
+        hours_from = request.form.get('hours_from', '')
+        hours_to = request.form.get('hours_to', '')
+        hours = f'{hours_from}〜{hours_to}' if hours_from and hours_to else ''
+        contact_phone = request.form.get('contact_phone', '').strip()
+        contact_department = request.form.get('contact_department', '').strip()
+        if pets_allowed not in pet_options:
+            errors.append('ペットの受け入れを選択してください。')
+        if status not in status_options:
+            errors.append('開設状況を選択してください。')
+        if hours_from not in hour_options or hours_to not in hour_options:
+            errors.append('利用可能時間の開始時刻と終了時刻を選択してください。')
+        if not re.fullmatch(r'\d+', contact_phone):
+            errors.append('電話番号は数字のみで入力してください。')
+        for value, label in [(contact_department, '担当部署')]:
+            if not value:
+                errors.append(f'{label}を入力してください。')
+
+        if errors:
+            return render_template(
+                'shelter_register.html',
+                error=True,
+                messages=errors,
+                form_data=form_data,
+                facility_options=facility_options,
+                barrier_free_options=barrier_free_options,
+                parking_options=parking_options,
+                shelter_types=shelter_types,
+                pet_options=pet_options,
+                status_options=status_options,
+                hour_options=hour_options
+            )
+
+        if request.form.get('action') == 'edit':
+            return render_template(
+                'shelter_register.html',
+                form_data=form_data,
+                facility_options=facility_options,
+                barrier_free_options=barrier_free_options,
+                parking_options=parking_options,
+                shelter_types=shelter_types,
+                pet_options=pet_options,
+                status_options=status_options,
+                hour_options=hour_options
+            )
+
+        if request.form.get('action') != 'save':
+            return render_template(
+                'shelter_confirm.html',
+                form_data=form_data,
+                facility_options=facility_options,
+                barrier_free_options=barrier_free_options,
+                parking_options=parking_options,
+                shelter_types=shelter_types,
+                pet_options=pet_options,
+                status_options=status_options
+            )
+
+        try:
+            next_id = max((shelter.get('id', 0) for shelter in shelters), default=0) + 1
+            updated_shelters = shelters + [{
+                'id': next_id,
+                'name': name,
+                'address': address,
+                'shelter_type': shelter_type,
+                'capacity': capacity,
+                'current_capacity': current_capacity,
+                'facilities': [value for value in request.form.getlist('facilities') if value in facility_options],
+                'barrier_free': [value for value in request.form.getlist('barrier_free') if value in barrier_free_options],
+                'parking': [value for value in request.form.getlist('parking') if value in parking_options],
+                'pets_allowed': pets_allowed,
+                'notes': request.form.get('notes', '').strip(),
+                'status': status,
+                'hours': hours,
+                'hours_from': hours_from,
+                'hours_to': hours_to,
+                'contact_phone': contact_phone,
+                'contact_department': contact_department
+            }]
+            with open(DATA_FILE, 'w', encoding='utf-8') as data_file:
+                json.dump(updated_shelters, data_file, ensure_ascii=False, indent=2)
+            shelters[:] = updated_shelters
+        except Exception:
+            return render_template(
+                'shelter_register.html',
+                error=True,
+                message='避難所情報を保存できませんでした。',
+                form_data=form_data,
+                facility_options=facility_options,
+                barrier_free_options=barrier_free_options,
+                parking_options=parking_options,
+                shelter_types=shelter_types,
+                pet_options=pet_options,
+                status_options=status_options,
+                hour_options=hour_options
+            )
+
+        return render_template(
+            'shelter_register.html',
+            success=True,
+            message='避難所情報の登録が完了しました。',
+            facility_options=facility_options,
+            barrier_free_options=barrier_free_options,
+            parking_options=parking_options,
+            shelter_types=shelter_types,
+            pet_options=pet_options,
+            status_options=status_options
+        )
+
+    return render_template(
+        'shelter_register.html',
+        facility_options=facility_options,
+        barrier_free_options=barrier_free_options,
+        parking_options=parking_options,
+        shelter_types=shelter_types,
+        pet_options=pet_options,
+        status_options=status_options,
+        hour_options=hour_options
+    )
 
 # 避難所検索ページ
 @app.route('/shelter_search')
 def shelter_search():
-    return render_template('shelter_search.html')
+    keyword = request.args.get('keyword', '').strip()
+    facility_options = ['トイレ', 'Wi-Fi', '発電機', '空調', '充電設備', '給水設備', '医療・救護設備']
+    barrier_free_options = ['車椅子対応', 'スロープ', '多目的トイレ', 'エレベーター', '妊婦・乳幼児対応', '授乳室', 'おむつ交換スペース']
+    parking_options = ['駐車場あり', '駐車場なし', '大型車対応']
+    shelter_types = ['指定避難所', '福祉避難所', '緊急避難場所', 'その他']
+    status_options = ['開設', '閉鎖', '準備中']
+    filters = {
+        'pet_allowed': request.args.get('pet_allowed') == '1',
+        'barrier_free': request.args.get('barrier_free') == '1',
+        'has_toilet': request.args.get('has_toilet') == '1',
+        'has_wifi': request.args.get('has_wifi') == '1',
+        'pregnant_infant_support': request.args.get('pregnant_infant_support') == '1',
+        'facilities': [value for value in request.args.getlist('facility') if value in facility_options],
+        'barrier_free_items': [value for value in request.args.getlist('barrier_free_item') if value in barrier_free_options],
+        'parking': [value for value in request.args.getlist('parking') if value in parking_options],
+        'shelter_types': [value for value in request.args.getlist('shelter_type') if value in shelter_types],
+        'statuses': [value for value in request.args.getlist('status') if value in status_options]
+    }
+
+    def values(shelter, key):
+        value = shelter.get(key, [])
+        if isinstance(value, list):
+            return value
+        if not value:
+            return []
+        return [part.strip() for part in str(value).replace('・', '・').split('・') if part.strip()]
+
+    def matches(shelter):
+        searchable = ' '.join(str(shelter.get(key, '')) for key in ('name', 'district', 'address'))
+        if keyword and keyword.casefold() not in searchable.casefold():
+            return False
+        facilities = values(shelter, 'facilities')
+        barriers = values(shelter, 'barrier_free')
+        parking = values(shelter, 'parking')
+        if filters['pet_allowed'] and shelter.get('pets_allowed') not in ('可', '専用スペースあり'):
+            return False
+        if filters['barrier_free'] and not barriers:
+            return False
+        if filters['has_toilet'] and 'トイレ' not in facilities:
+            return False
+        if filters['has_wifi'] and 'Wi-Fi' not in facilities:
+            return False
+        if filters['pregnant_infant_support'] and not any(
+            item in barriers for item in ('妊婦・乳幼児対応', '授乳室', 'おむつ交換スペース')
+        ):
+            return False
+        if filters['facilities'] and not all(item in facilities for item in filters['facilities']):
+            return False
+        if filters['barrier_free_items'] and not all(item in barriers for item in filters['barrier_free_items']):
+            return False
+        if filters['parking'] and not all(item in parking for item in filters['parking']):
+            return False
+        if filters['shelter_types'] and shelter.get('shelter_type') not in filters['shelter_types']:
+            return False
+        if filters['statuses'] and (shelter.get('status') or shelter.get('opening_status')) not in filters['statuses']:
+            return False
+        return True
+
+    default_coordinates = {
+        1: (40.8227, 140.7428),
+        2: (40.8127, 140.7556),
+        3: (40.7975, 140.7752),
+        4: (40.8103, 140.7602),
+        5: (40.8202, 140.7354)
+    }
+    results = [shelter for shelter in shelters if matches(shelter)]
+    map_shelters = []
+    for shelter in results:
+        latitude = shelter.get('latitude')
+        longitude = shelter.get('longitude')
+        if latitude is None or longitude is None:
+            latitude, longitude = default_coordinates.get(shelter.get('id'), (None, None))
+        if latitude is not None and longitude is not None:
+            map_shelters.append({
+                'id': shelter.get('id'),
+                'name': shelter.get('name', '未登録'),
+                'latitude': latitude,
+                'longitude': longitude
+            })
+
+    return render_template(
+        'shelter_search.html',
+        shelters=results,
+        crowding={shelter.get('id'): get_shelter_crowding(shelter) for shelter in results},
+        map_shelters=map_shelters,
+        keyword=keyword,
+        filters=filters,
+        facility_options=facility_options,
+        barrier_free_options=barrier_free_options,
+        parking_options=parking_options,
+        shelter_types=shelter_types,
+        status_options=status_options
+    )
 
 # 全施設一覧ページ
 @app.route('/all_shelters')
 def all_shelters():
     return render_template('search_results.html', results=shelters)
 
+# 避難所詳細ページ
+@app.route('/shelter/<int:shelter_id>')
+def shelter_detail(shelter_id):
+    shelter = next((s for s in shelters if s.get('id') == shelter_id), None)
+    if shelter is None:
+        return '避難所が見つかりませんでした', 404
+    return render_template(
+        'shelter_detail.html',
+        shelter=shelter,
+        crowding=get_shelter_crowding(shelter),
+        facility_options=['トイレ', 'Wi-Fi', '発電機', '空調', '充電設備', '給水設備', '医療・救護設備'],
+        barrier_free_options=['車椅子対応', 'スロープ', '多目的トイレ', 'エレベーター', '妊婦・乳幼児対応', '授乳室', 'おむつ交換スペース'],
+        parking_options=['駐車場あり', '駐車場なし', '大型車対応']
+    )
 
-# 指示ボード：住民向けの指示を一覧で確認する
-@app.route('/board')
-@login_required
+
+# 指示ボード：住民向けの指示を検索・発信・確認する
+@app.route('/board', methods=['GET', 'POST'])
 def board():
-    resident_instructions = [i for i in instructions if i.get('target') == '住民']
-    return render_template('board.html', instructions=resident_instructions)
+    if request.method == 'POST':
+        if not session.get('logged_in'):
+            return redirect(url_for('login', next=request.path))
+        content = request.form.get('content', '').strip()
+        if content:
+            audience = request.form.get('audience', 'all')
+            if audience not in ('all', 'logged_in', 'anonymous'):
+                audience = 'all'
+            next_id = max((instruction.get('id', 0) for instruction in instructions), default=0) + 1
+            now = get_japan_time()
+            instructions.insert(0, {
+                'id': next_id,
+                'target': '住民',
+                'content': content,
+                'shelter': request.form.get('shelter', '').strip(),
+                'status': '発信中',
+                'created_at': now,
+                'updated_at': now,
+                'audience': audience,
+            })
+            save_instructions()
+            return redirect(url_for('board'))
+
+    search_word = request.args.get('q', '').strip()
+    is_logged_in = bool(session.get('logged_in'))
+
+    def is_visible(instruction):
+        if instruction.get('target') != '住民':
+            return False
+        audience = instruction.get('audience', 'all')
+        return audience == 'all' or (audience == 'logged_in' and is_logged_in) or (audience == 'anonymous' and not is_logged_in)
+
+    resident_instructions = [i for i in instructions if is_visible(i)]
+    if search_word:
+        resident_instructions = [
+            instruction for instruction in resident_instructions
+            if search_word in instruction.get('content', '')
+            or search_word in instruction.get('shelter', '')
+        ]
+    return render_template(
+        'board.html',
+        instructions=resident_instructions,
+        search_word=search_word,
+        is_logged_in=is_logged_in
+    )
 
 # 検索結果ページ：templates/search_results.html を返す
 @app.route('/search_results')
